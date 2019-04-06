@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-
+import glob
 import cv2
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
@@ -18,15 +18,16 @@ class VideoDataset(Dataset):
             clip_len (int, optional): Determines how many frames are there in each clip. Defaults to 8. 
         """
 
-    def __init__(self, directory, mode='train', clip_len=8):
-        folder = Path(directory)/mode  # get the directory of the specified split
-
+    def __init__(self, directory, im_path_root=None, mode='train', clip_len=8):
+        #folder = Path(directory)/mode  # get the directory of the specified split
+        folder = directory + '/' + mode
         self.clip_len = clip_len
 
         # the following three parameters are chosen as described in the paper section 4.1
         self.resize_height = 128  
         self.resize_width = 171
         self.crop_size = 112
+        self.im_path_root = im_path_root
 
         # obtain all the filenames of files inside all the class folders 
         # going through each class folder one at a time
@@ -43,20 +44,55 @@ class VideoDataset(Dataset):
 
     def __getitem__(self, index):
         # loading and preprocessing. TODO move them to transform classes
-        buffer = self.loadvideo(self.fnames[index])
-        buffer = self.crop(buffer, self.clip_len, self.crop_size)
+        buffer = self.loadvideoframe(self.fnames[index])
+        buffer = self.crop(buffer, self.crop_size)
         buffer = self.normalize(buffer)
 
         return buffer, self.label_array[index]    
         
         
+    def get_im_path_pattern(self, fname):
+        vid_name = os.path.basename(fname)[:-4]
+        vid_class = fname.split('/')[-2]
+        return os.path.join(self.im_path_root, vid_name, 'img_*.jpg')
+    def loadvideoframe(self, fname):
+        im_path_pattern = self.get_im_path_pattern(fname)
+        img_list = sorted(glob.glob(im_path_pattern))
+        frame_count = len(img_list)
+        #sample_im = cv2.imread(img_list[0])
+        #frame_width = sample_im.shape[1]
+        #frame_height = sample_im.shape[0]
+        buffer = np.empty((self.clip_len, self.resize_height, self.resize_width, 3), np.dtype('float32'))
+
+        count = 0
+        start_frame = np.random.randint(frame_count - self.clip_len+1, size=1)[0]
+        # read in each frame, one at a time into the numpy buffer array
+        while (count < self.clip_len):
+            frame = cv2.imread(img_list[start_frame+count])
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # will resize frames if not already final size
+            # NOTE: strongly recommended to resize them during the download process. This script
+            # will process videos of any size, but will take longer the larger the video file.
+            #if (frame_height != self.resize_height) or (frame_width != self.resize_width):
+            frame = cv2.resize(frame, (self.resize_width, self.resize_height))
+            buffer[count] = frame
+            count += 1
+
+
+        # convert from [D, H, W, C] format to [C, D, H, W] (what PyTorch uses)
+        # D = Depth (in this case, time), H = Height, W = Width, C = Channels
+        buffer = buffer.transpose((3, 0, 1, 2))
+
+        return buffer 
 
     def loadvideo(self, fname):
         # initialize a VideoCapture object to read video data into a numpy array
         capture = cv2.VideoCapture(fname)
+        print(fname)
         frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(frame_count, frame_width, frame_height)
         # create a buffer. Must have dtype float, so it gets converted to a FloatTensor by Pytorch later
         buffer = np.empty((frame_count, self.resize_height, self.resize_width, 3), np.dtype('float32'))
 
@@ -84,9 +120,9 @@ class VideoDataset(Dataset):
 
         return buffer 
     
-    def crop(self, buffer, clip_len, crop_size):
+    def crop(self, buffer, crop_size):
         # randomly select time index for temporal jittering
-        time_index = np.random.randint(buffer.shape[1] - clip_len)
+        #time_index = np.random.randint(buffer.shape[1] - clip_len)
         # randomly select start indices in order to crop the video
         height_index = np.random.randint(buffer.shape[2] - crop_size)
         width_index = np.random.randint(buffer.shape[3] - crop_size)
@@ -94,7 +130,7 @@ class VideoDataset(Dataset):
         # crop and jitter the video using indexing. The spatial crop is performed on 
         # the entire array, so each frame is cropped in the same location. The temporal
         # jitter takes place via the selection of consecutive frames
-        buffer = buffer[:, time_index:time_index + clip_len,
+        buffer = buffer[:, :,
                         height_index:height_index + crop_size,
                         width_index:width_index + crop_size]
 
@@ -121,9 +157,9 @@ class VideoDataset1M(VideoDataset):
             mode (str, optional): Determines which folder of the directory the dataset will read from. Defaults to 'train'. 
             clip_len (int, optional): Determines how many frames are there in each clip. Defaults to 8. 
         """
-    def __init__(self, directory, mode='train', clip_len=8):
+    def __init__(self, directory, im_path_root, mode='train', clip_len=8):
         # Initialize instance of original dataset class
-        super(VideoDataset1M, self).__init__(directory, mode, clip_len)
+        super(VideoDataset1M, self).__init__(directory, im_path_root, mode, clip_len)
 
     def __getitem__(self, index):
         # if we are to have 1M samples on every pass, we need to shuffle
@@ -134,7 +170,7 @@ class VideoDataset1M(VideoDataset):
         # augmenting the data. 
         index = np.random.randint(len(self.fnames))
 
-        buffer = self.loadvideo(self.fnames[index])
+        buffer = self.loadvideoframe(self.fnames[index])
         buffer = self.crop(buffer, self.clip_len, self.crop_size)
         buffer = self.normalize(buffer)
 
@@ -142,3 +178,56 @@ class VideoDataset1M(VideoDataset):
 
     def __len__(self):
         return 1000000  # manually set the length to 1 million
+
+class VideoDatasetTSN(VideoDataset):
+    """Dataset for TSN-like data input
+    Args:
+        directory: path to the data containing train/val/test
+        im_path_root: path to image frames
+        mode: determines which folder to read from. Default to 'train'.
+        segment_n: number of segment in a video
+        clip_len: number of frames in a clip
+        """
+    def __init__(self, directory, im_path_root, mode='train', segment_n=3, clip_len=8):
+        super(VideoDatasetTSN, self).__init__(directory, im_path_root, mode, clip_len)
+        self.segment_n = segment_n
+    def loadvideoframe(self, fname):
+        im_path_pattern = self.get_im_path_pattern(fname)
+        img_list = sorted(glob.glob(im_path_pattern))
+        frame_count = len(img_list)
+        #sample_im = cv2.imread(img_list[0])
+        #frame_width = sample_im.shape[1]
+        #frame_height = sample_im.shape[0]
+        buffer = np.empty((self.segment_n, self.clip_len, self.resize_height, self.resize_width, 3), np.dtype('float32'))
+
+        count = 0
+        frame_per_segment = frame_count // self.segment_n
+        start_frames = np.random.randint(frame_per_segment - self.clip_len+1, 
+                size=self.segment_n) + np.arange(0, frame_count, frame_per_segment)
+        # read in each frame, one at a time into the numpy buffer array
+        for segment_id, start_frame in enumerate(start_frames):
+            for count in range(0, self.clip_len):
+                frame = cv2.imread(img_list[start_frame+count])
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # will resize frames if not already final size
+                # NOTE: strongly recommended to resize them during the download process. This script
+                # will process videos of any size, but will take longer the larger the video file.
+                #if (frame_height != self.resize_height) or (frame_width != self.resize_width):
+                frame = cv2.resize(frame, (self.resize_width, self.resize_height))
+                buffer[segment_id, count] = frame
+
+
+        # convert from [N, D, H, W, C] format to [N, C, D, H, W] (what PyTorch uses)
+        # N = Number of segment, D = Depth (in this case, time), H = Height, W = Width, C = Channels
+        buffer = buffer.transpose((0, 4, 1, 2, 3))
+
+        return buffer 
+    def crop(self, buffer, crop_size):
+        height_index = np.random.randint(buffer.shape[2] - crop_size)
+        width_index = np.random.randint(buffer.shape[3] - crop_size)
+
+        buffer = buffer[:, :, :,
+                        height_index:height_index + crop_size,
+                        width_index:width_index + crop_size]
+
+        return buffer                

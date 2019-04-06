@@ -98,18 +98,18 @@ class R2Plus1DNet(nn.Module):
             layer_sizes (tuple): An iterable containing the number of blocks in each layer
             block_type (Module, optional): Type of block that is to be used to form the layers. Default: SpatioTemporalResBlock. 
         """
-    def __init__(self, layer_sizes, block_type=SpatioTemporalResBlock):
+    def __init__(self, layer_sizes, block_type=SpatioTemporalResBlock, downsize_factor=2):
         super(R2Plus1DNet, self).__init__()
-
+        self.downsize_factor=downsize_factor
         # first conv, with stride 1x2x2 and kernel size 3x7x7
-        self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
+        self.conv1 = SpatioTemporalConv(3, 64//downsize_factor, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
         # output of conv2 is same size as of conv1, no downsampling needed. kernel_size 3x3x3
-        self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_sizes[0], block_type=block_type)
+        self.conv2 = SpatioTemporalResLayer(64//downsize_factor, 64//downsize_factor, 3, layer_sizes[0], block_type=block_type)
         # each of the final three layers doubles num_channels, while performing downsampling 
         # inside the first block
-        self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[1], block_type=block_type, downsample=True)
-        self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[2], block_type=block_type, downsample=True)
-        self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[3], block_type=block_type, downsample=True)
+        self.conv3 = SpatioTemporalResLayer(64//downsize_factor, 128//downsize_factor, 3, layer_sizes[1], block_type=block_type, downsample=True)
+        self.conv4 = SpatioTemporalResLayer(128//downsize_factor, 256//downsize_factor, 3, layer_sizes[2], block_type=block_type, downsample=True)
+        self.conv5 = SpatioTemporalResLayer(256//downsize_factor, 512//downsize_factor, 3, layer_sizes[3], block_type=block_type, downsample=True)
 
         # global average pooling of the output
         self.pool = nn.AdaptiveAvgPool3d(1)
@@ -122,8 +122,8 @@ class R2Plus1DNet(nn.Module):
         x = self.conv5(x)
 
         x = self.pool(x)
-        
-        return x.view(-1, 512)
+        downsize_factor=self.downsize_factor
+        return x.view(-1, 512//downsize_factor)
 
 class R2Plus1DClassifier(nn.Module):
     r"""Forms a complete ResNet classifier producing vectors of size num_classes, by initializng 5 layers, 
@@ -136,38 +136,14 @@ class R2Plus1DClassifier(nn.Module):
             layer_sizes (tuple): An iterable containing the number of blocks in each layer
             block_type (Module, optional): Type of block that is to be used to form the layers. Default: SpatioTemporalResBlock. 
         """
-    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
+    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock,downsize_factor=2):
         super(R2Plus1DClassifier, self).__init__()
 
-        self.res2plus1d = R2Plus1DNet(layer_sizes, block_type)
-        self.linear = nn.Linear(512, num_classes)
+        self.res2plus1d = R2Plus1DNet(layer_sizes, block_type,downsize_factor)
+        self.linear = nn.Linear(512//downsize_factor, num_classes)
 
     def forward(self, x):
         x = self.res2plus1d(x)
         x = self.linear(x) 
 
-        return x
-class R2Plus1DTSNClassifier(nn.Module):
-    """Model variant of R2+1D with TSN strucuture
-        Args:
-            num_classes (int): Number of classes
-            layer_sizes:
-            block_type: Type of block to form the layers
-        """
-    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
-        super(R2Plus1DTSNClassifier, self).__init__()
-        self.res2plus1d = R2Plus1DNet(layer_sizes, block_type)
-        self.linear = nn.Linear(512, num_classes)
-        self.concensus = nn.AdaptiveAvgPool1d(1)
-    def forward(self,x):
-        # reshape input to make a batch of clips 
-        batch_size = x.size(0) 
-        segment_n = x.size(1) 
-        x = x.view((x.size(0)*x.size(1)) + x.size()[2:])
-        x =self.res2plus1d(x)
-        x = self.linear(x)
-        # reshape back to do score concensus
-        x = x.view((batch_size,segment_n, -1))
-        x = self.concensus(x)
-        return x
-
+        return x   

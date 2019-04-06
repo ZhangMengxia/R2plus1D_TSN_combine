@@ -8,13 +8,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import VideoDataset, VideoDataset1M
-from network import R2Plus1DClassifier
+from network_shallow import R2Plus1DClassifier
 
 # Use GPU if available else revert to CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
-def train_model(num_classes, directory, im_root=None, layer_sizes=[2, 2, 2, 2], num_epochs=45, save=True, path="model_data.pth.tar"):
+def train_model(num_classes, directory, im_root=None, batch_size = 16, layer_sizes=[2, 2, 2, 2], num_epochs=45, save=True, path="model_data.pth.tar"):
     """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
     selected optimizer, scheduler, criterion, defualt otherwise. Features saving and restoration capabilities as well. 
     Adapted from the PyTorch tutorial found here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
@@ -37,7 +37,7 @@ def train_model(num_classes, directory, im_root=None, layer_sizes=[2, 2, 2, 2], 
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)  # the scheduler divides the lr by 10 every 10 epochs
 
     # prepare the dataloaders into a dict
-    train_dataloader = DataLoader(VideoDataset(directory, im_root), batch_size=8, shuffle=True, num_workers=8)
+    train_dataloader = DataLoader(VideoDataset(directory, im_root), batch_size=batch_size, shuffle=True, num_workers=4)
     # IF training on Kinetics-600 and require exactly a million samples each epoch, 
     # import VideoDataset1M and uncomment the following
     # train_dataloader = DataLoader(VideoDataset1M(directory), batch_size=32, num_workers=4)
