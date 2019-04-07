@@ -18,15 +18,16 @@ class VideoDataset(Dataset):
             clip_len (int, optional): Determines how many frames are there in each clip. Defaults to 8. 
         """
 
-    def __init__(self, directory, im_path_root=None, mode='train', clip_len=8):
+    def __init__(self, directory, im_path_root=None, resize_width=171, resize_height=128, crop_size=112,
+            mode='train', clip_len=8):
         #folder = Path(directory)/mode  # get the directory of the specified split
         folder = directory + '/' + mode
         self.clip_len = clip_len
 
         # the following three parameters are chosen as described in the paper section 4.1
-        self.resize_height = 128  
-        self.resize_width = 171
-        self.crop_size = 112
+        self.resize_height = resize_height
+        self.resize_width = resize_width
+        self.crop_size = crop_size
         self.im_path_root = im_path_root
 
         # obtain all the filenames of files inside all the class folders 
@@ -188,8 +189,10 @@ class VideoDatasetTSN(VideoDataset):
         segment_n: number of segment in a video
         clip_len: number of frames in a clip
         """
-    def __init__(self, directory, im_path_root, mode='train', segment_n=3, clip_len=8):
-        super(VideoDatasetTSN, self).__init__(directory, im_path_root, mode, clip_len)
+    def __init__(self, directory, im_path_root, resize_width=171, resize_height=128, crop_size=112,
+            mode='train', segment_n=3, clip_len=8):
+        super(VideoDatasetTSN, self).__init__(directory, im_path_root, resize_width, resize_height, 
+                crop_size, mode, clip_len)
         self.segment_n = segment_n
     def loadvideoframe(self, fname):
         im_path_pattern = self.get_im_path_pattern(fname)
@@ -203,10 +206,11 @@ class VideoDatasetTSN(VideoDataset):
         count = 0
         frame_per_segment = frame_count // self.segment_n
         start_frames = np.random.randint(frame_per_segment - self.clip_len+1, 
-                size=self.segment_n) + np.arange(0, frame_count, frame_per_segment)
+                size=self.segment_n)
         # read in each frame, one at a time into the numpy buffer array
-        for segment_id, start_frame in enumerate(start_frames):
+        for segment_id, start_frame_off in enumerate(start_frames):
             for count in range(0, self.clip_len):
+                start_frame = start_frame_off + segment_id * frame_per_segment 
                 frame = cv2.imread(img_list[start_frame+count])
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 # will resize frames if not already final size
@@ -223,8 +227,8 @@ class VideoDatasetTSN(VideoDataset):
 
         return buffer 
     def crop(self, buffer, crop_size):
-        height_index = np.random.randint(buffer.shape[2] - crop_size)
-        width_index = np.random.randint(buffer.shape[3] - crop_size)
+        height_index = np.random.randint(buffer.shape[3] - crop_size)
+        width_index = np.random.randint(buffer.shape[4] - crop_size)
 
         buffer = buffer[:, :, :,
                         height_index:height_index + crop_size,

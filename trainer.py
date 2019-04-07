@@ -4,44 +4,34 @@ import time
 import numpy as np
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import VideoDataset, VideoDataset1M
-from network import R2Plus1DClassifier
 
 # Use GPU if available else revert to CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
-def train_model(num_classes, directory, im_root=None, layer_sizes=[2, 2, 2, 2], num_epochs=45, save=True, path="model_data.pth.tar"):
+
+def train_model(model, train_dataloader, val_dataloader, num_epochs=45, save=True, path="model_data.pth"):
     """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
     selected optimizer, scheduler, criterion, defualt otherwise. Features saving and restoration capabilities as well. 
     Adapted from the PyTorch tutorial found here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
 
         Args:
-            num_classes (int): Number of classes in the data
-            directory (str): Directory where the data is to be loaded from
-            layer_sizes (list, optional): Number of blocks in each layer. Defaults to [2, 2, 2, 2], equivalent to ResNet18.
+            model (nn.Module): Model for the task
+            train_dataloader (): data loader for training
+            val_dataloader (): data loader for validation
             num_epochs (int, optional): Number of epochs to train for. Defaults to 45. 
             save (bool, optional): If true, the model will be saved to path. Defaults to True. 
             path (str, optional): The directory to load a model checkpoint from, and if save == True, save to. Defaults to "model_data.pth.tar".
     """
 
 
-    # initalize the ResNet 18 version of this model
-    model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes).to(device)
-
+    model = model.to(device)
     criterion = nn.CrossEntropyLoss() # standard crossentropy loss for classification
     optimizer = optim.SGD(model.parameters(), lr=0.01)  # hyperparameters as given in paper sec 4.1
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)  # the scheduler divides the lr by 10 every 10 epochs
 
-    # prepare the dataloaders into a dict
-    train_dataloader = DataLoader(VideoDataset(directory, im_root), batch_size=8, shuffle=True, num_workers=8)
-    # IF training on Kinetics-600 and require exactly a million samples each epoch, 
-    # import VideoDataset1M and uncomment the following
-    # train_dataloader = DataLoader(VideoDataset1M(directory), batch_size=32, num_workers=4)
-    val_dataloader = DataLoader(VideoDataset(directory, im_root, mode='val'), batch_size=2, num_workers=2)
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
 
     dataset_sizes = {x: len(dataloaders[x].dataset) for x in ['train', 'val']}

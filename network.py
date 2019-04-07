@@ -136,7 +136,7 @@ class R2Plus1DClassifier(nn.Module):
             layer_sizes (tuple): An iterable containing the number of blocks in each layer
             block_type (Module, optional): Type of block that is to be used to form the layers. Default: SpatioTemporalResBlock. 
         """
-    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
+    def __init__(self, num_classes, layer_sizes=[2,2,2,2], block_type=SpatioTemporalResBlock):
         super(R2Plus1DClassifier, self).__init__()
 
         self.res2plus1d = R2Plus1DNet(layer_sizes, block_type)
@@ -153,18 +153,22 @@ class R2Plus1DTSNClassifier(nn.Module):
             num_classes (int): Number of classes
             layer_sizes:
             block_type: Type of block to form the layers
+            dropout: dropout rate of last layer
         """
-    def __init__(self, num_classes, layer_sizes, block_type=SpatioTemporalResBlock):
+    def __init__(self, num_classes, layer_sizes=[2,2,2,2], block_type=SpatioTemporalResBlock,
+            dropout=0.8):
         super(R2Plus1DTSNClassifier, self).__init__()
         self.res2plus1d = R2Plus1DNet(layer_sizes, block_type)
         self.linear = nn.Linear(512, num_classes)
-        self.concensus = nn.AdaptiveAvgPool1d(1)
+        self.concensus = lambda x: x.mean(dim=1)
+        self.dropout = nn.Dropout(dropout)
     def forward(self,x):
         # reshape input to make a batch of clips 
         batch_size = x.size(0) 
         segment_n = x.size(1) 
-        x = x.view((x.size(0)*x.size(1)) + x.size()[2:])
+        x = x.view((x.size(0)*x.size(1),) + x.size()[2:])
         x =self.res2plus1d(x)
+        x = self.dropout(x)
         x = self.linear(x)
         # reshape back to do score concensus
         x = x.view((batch_size,segment_n, -1))
