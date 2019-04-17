@@ -31,6 +31,7 @@ class TSNClassifier(nn.Module):
 
         if hasattr(torchvision.models, base_model):
             self.base_model = getattr(torchvision.models, base_model)(pretrained)
+            print('base model', base_model)
             self.base_model.last_layer_name = 'fc'
             self.input_size = 224
             self.input_mean = [0.485, 0.456, 0.406]

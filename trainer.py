@@ -6,11 +6,72 @@ import torch
 from torch import nn, optim
 from tqdm import tqdm
 
-
 # Use GPU if available else revert to CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Device being used:", device)
 
+def test_model(model, val_dataloader, path="model_data.pth"):
+    """Test a model, 
+        Args:
+            model (nn.Module): Model for the task
+            val_dataloader (): data loader for validation
+            path (str, optional): The directory to load a model checkpoint from.
+    """
+
+
+    model = model.to(device)
+    criterion = nn.CrossEntropyLoss() # standard crossentropy loss for classification
+
+
+    dataset_size = len(val_dataloader.dataset) 
+
+    # saves the time the process was started, to compute total time at the end
+    start = time.time()
+    epoch_resume = 0
+
+    # check if there was a previously saved checkpoint
+    if os.path.exists(path):
+        # loads the checkpoint
+        checkpoint = torch.load(path)
+        print("Reloading from previously saved checkpoint")
+
+        # restores the model and optimizer state_dicts
+        model.load_state_dict(checkpoint['state_dict'])
+    else:
+        print("Checkpoint does not exists {}".format(path))
+        return
+
+
+    # reset the running loss and corrects
+    running_loss = 0.0
+    running_corrects = 0
+
+    model.eval()
+
+
+    for inputs, labels in val_dataloader:
+        # move inputs and labels to the device the training is taking place on
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        # keep intermediate states iff backpropagation will be performed. If false, 
+        # then all intermediate states will be thrown away during evaluation, to use
+        # the least amount of memory possible.
+        with torch.set_grad_enabled(False):
+            outputs = model(inputs)
+            # we're interested in the indices on the max values, not the values themselves
+            _, preds = torch.max(outputs, 1)  
+            loss = criterion(outputs, labels)
+
+
+        running_loss += loss.item() * inputs.size(0)
+        running_corrects += torch.sum(preds == labels.data)
+
+    epoch_loss = running_loss / dataset_size
+    epoch_acc = running_corrects.double() / dataset_size
+    time_val = time.time() - start
+    time_per_video = time_val / dataset_size
+    print("Time: {}s Each video takes {}s Loss: {} Acc: {}".format(time_val, time_per_video, epoch_loss, epoch_acc))
 
 def train_model(model, train_dataloader, val_dataloader, num_epochs=45, save=True, path="model_data.pth"):
     """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
