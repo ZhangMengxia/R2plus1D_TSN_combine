@@ -29,7 +29,7 @@ class VideoDataset(Dataset):
         self.resize_width = resize_width
         self.crop_size = crop_size
         self.im_path_root = im_path_root
-
+        self.mode=mode
         # obtain all the filenames of files inside all the class folders 
         # going through each class folder one at a time
         self.fnames, labels = [], []
@@ -125,13 +125,17 @@ class VideoDataset(Dataset):
         # randomly select time index for temporal jittering
         #time_index = np.random.randint(buffer.shape[1] - clip_len)
         # randomly select start indices in order to crop the video
-        height_index = np.random.randint(buffer.shape[2] - crop_size)
-        width_index = np.random.randint(buffer.shape[3] - crop_size)
+        if self.mode == 'train':
+            height_index = np.random.randint(buffer.shape[-2] - crop_size)
+            width_index = np.random.randint(buffer.shape[-1] - crop_size)
+        else:
+            height_index = (buffer.shape[-2] - crop_size) // 2
+            width_index = (buffer.shape[-1] - crop_size) // 2
 
         # crop and jitter the video using indexing. The spatial crop is performed on 
         # the entire array, so each frame is cropped in the same location. The temporal
         # jitter takes place via the selection of consecutive frames
-        buffer = buffer[:, :,
+        buffer = buffer[...,
                         height_index:height_index + crop_size,
                         width_index:width_index + crop_size]
 
@@ -226,12 +230,3 @@ class VideoDatasetTSN(VideoDataset):
         buffer = buffer.transpose((0, 4, 1, 2, 3))
 
         return buffer 
-    def crop(self, buffer, crop_size):
-        height_index = np.random.randint(buffer.shape[3] - crop_size)
-        width_index = np.random.randint(buffer.shape[4] - crop_size)
-
-        buffer = buffer[:, :, :,
-                        height_index:height_index + crop_size,
-                        width_index:width_index + crop_size]
-
-        return buffer                

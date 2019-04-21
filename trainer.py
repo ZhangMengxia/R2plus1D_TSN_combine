@@ -45,7 +45,8 @@ def test_model(model, val_dataloader, path="model_data.pth"):
     # reset the running loss and corrects
     running_loss = 0.0
     running_corrects = 0
-
+    running_topk = 0
+    top_k = 5
     model.eval()
 
 
@@ -61,17 +62,20 @@ def test_model(model, val_dataloader, path="model_data.pth"):
             outputs = model(inputs)
             # we're interested in the indices on the max values, not the values themselves
             _, preds = torch.max(outputs, 1)  
+            _, preds_s = torch.sort(outputs, 1, descending=True)
             loss = criterion(outputs, labels)
 
 
         running_loss += loss.item() * inputs.size(0)
+        running_topk += torch.sum(preds_s[:,:top_k] == labels.data.view(-1,1))
         running_corrects += torch.sum(preds == labels.data)
 
     epoch_loss = running_loss / dataset_size
     epoch_acc = running_corrects.double() / dataset_size
+    epoch_topk = running_topk.double() / dataset_size
     time_val = time.time() - start
     time_per_video = time_val / dataset_size
-    print("Time: {}s Each video takes {}s Loss: {} Acc: {}".format(time_val, time_per_video, epoch_loss, epoch_acc))
+    print("Time: {}s Each video takes {}s Loss: {} Acc: {} top5 Acc: {}".format(time_val, time_per_video, epoch_loss, epoch_acc, epoch_topk))
 
 def train_model(model, train_dataloader, val_dataloader, num_epochs=45, save=True, path="model_data.pth"):
     """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
@@ -90,8 +94,8 @@ def train_model(model, train_dataloader, val_dataloader, num_epochs=45, save=Tru
 
     model = model.to(device)
     criterion = nn.CrossEntropyLoss() # standard crossentropy loss for classification
-    optimizer = optim.SGD(model.parameters(), lr=0.01)  # hyperparameters as given in paper sec 4.1
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)  # the scheduler divides the lr by 10 every 10 epochs
+    optimizer = optim.SGD(model.parameters(), momentum=0.9, lr=0.01)  # hyperparameters as given in paper sec 4.1
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)  # the scheduler divides the lr by 10 every 10 epochs
 
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
 

@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from trainer import train_model
 data_path = '../UCF_for_R21D'
 im_root = '../UCF-101_of'
-save_path = 'r2p1d_tsn_model.pth'
+save_path = 'r2p1d_tsn_model_ucf.pth'
 # build model
 num_classes = 101
 model = R2Plus1DTSNClassifier(num_classes=num_classes)

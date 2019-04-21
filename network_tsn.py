@@ -9,12 +9,13 @@ class TSNClassifier(nn.Module):
             base_model: backbone model for feature extraction
             dropout: dropout ratio of last fc layer
         """
-    def __init__(self, num_classes, num_segments=3, base_model='resnet18', pretrained=True, dropout=0.8):
+    def __init__(self, num_classes, num_segments=3, clip_len=1, base_model='resnet18', pretrained=True, dropout=0.8):
         super(TSNClassifier,self).__init__()
-        self._prepare_base_model(base_model, pretrained)
         self.num_classes = num_classes
         self.num_segments = num_segments
+        self.clip_len = clip_len
         self.dropout = dropout
+        self._prepare_base_model(base_model, pretrained)
         feature_dim = self._prepare_tsn(num_classes)
         self.consensus = lambda x: x.mean(dim=1)
 
@@ -32,6 +33,12 @@ class TSNClassifier(nn.Module):
         if hasattr(torchvision.models, base_model):
             self.base_model = getattr(torchvision.models, base_model)(pretrained)
             print('base model', base_model)
+            # network surgery
+            if self.clip_len > 1:
+                assert pretrained==False, "clip_len larger than 1 cannot use pretrained model"
+                self.base_model.conv1 = nn.Conv2d(3*self.clip_len, 64, 
+                        kernel_size=7, stride=2, padding=3,
+                                               bias=False)
             self.base_model.last_layer_name = 'fc'
             self.input_size = 224
             self.input_mean = [0.485, 0.456, 0.406]
