@@ -29,4 +29,4 @@ val_dataloader = DataLoader(
                 mode='val'), 
         batch_size=2, num_workers=2)
 # train model
-train_model(model, train_dataloader, val_dataloader, num_epochs=80, path=save_path)
+train_model(model, train_dataloader, val_dataloader, num_epochs=70, path=save_path)
